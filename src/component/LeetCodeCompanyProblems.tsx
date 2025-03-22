@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useParams } from "react-router";
+import { CheckIcon } from "lucide-react";
+
 interface LeetCodeProblem {
   Difficulty: "EASY" | "MEDIUM" | "HARD";
   Title: string;
@@ -25,14 +27,15 @@ interface LeetCodeProblem {
   "Acceptance Rate": number;
   Link: string;
   Topics: string;
+  solved?: boolean; 
 }
 
 const LeetCodeCompanyProblems: React.FC = () => {
   const { company } = useParams();
   const [companyProblems, setCompanyProblems] = useState<LeetCodeProblem[]>([]);
-  // const companyProblems = problemsData[company as keyof typeof problemsData];
   const [searchTerm, setSearchTerm] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState<string>("ALL");
+  const [solvedFilter, setSolvedFilter] = useState<string>("ALL");
   const [sortConfig, setSortConfig] = useState<{
     key: keyof LeetCodeProblem | null;
     direction: "ascending" | "descending";
@@ -40,28 +43,75 @@ const LeetCodeCompanyProblems: React.FC = () => {
     key: "Frequency",
     direction: "descending",
   });
+
   useEffect(() => {
     const fetchData = async () => {
       const response = await fetch("/merged_questions.json");
       const data = await response.json();
       console.log(data[company as string]);
-      setCompanyProblems(data[company as string]);
+      
+      // Load solved status from localStorage
+      const savedSolvedStatus = localStorage.getItem(`${company}-solved-problems`);
+      let problemsWithSolvedStatus = data[company as string] || [];
+      
+      if (savedSolvedStatus) {
+        const solvedMap = JSON.parse(savedSolvedStatus);
+        problemsWithSolvedStatus = problemsWithSolvedStatus.map((problem: LeetCodeProblem) => ({
+          ...problem,
+          solved: solvedMap[problem.Title] || false
+        }));
+      } else {
+        problemsWithSolvedStatus = problemsWithSolvedStatus.map((problem: LeetCodeProblem) => ({
+          ...problem,
+          solved: false
+        }));
+      }
+      
+      setCompanyProblems(problemsWithSolvedStatus);
     };
     fetchData();
-  }, []);
-  // Filter problems based on search term and difficulty
+  }, [company]);
+
+  // Toggle solved status for a problem
+  const toggleSolvedStatus = (title: string) => {
+    const updatedProblems = companyProblems.map(problem => 
+      problem.Title === title ? { ...problem, solved: !problem.solved } : problem
+    );
+    setCompanyProblems(updatedProblems);
+    
+    // Save to localStorage
+    const solvedMap = updatedProblems.reduce((acc, problem) => {
+      acc[problem.Title] = problem.solved;
+      return acc;
+    }, {} as Record<string, boolean>);
+    
+    localStorage.setItem(`${company}-solved-problems`, JSON.stringify(solvedMap));
+  };
+
+  // Filter problems based on search term, difficulty, and solved status
   const filteredProblems = companyProblems.filter((problem) => {
     const matchesSearch =
       problem.Title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       problem.Topics.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDifficulty =
       difficultyFilter === "ALL" || problem.Difficulty === difficultyFilter;
-    return matchesSearch && matchesDifficulty;
+    const matchesSolved = 
+      solvedFilter === "ALL" || 
+      (solvedFilter === "SOLVED" && problem.solved) || 
+      (solvedFilter === "UNSOLVED" && !problem.solved);
+    
+    return matchesSearch && matchesDifficulty && matchesSolved;
   });
 
   // Sort the filtered problems
   const sortedProblems = [...filteredProblems].sort((a, b) => {
     if (!sortConfig.key) return 0;
+
+    if (sortConfig.key === "solved") {
+      return sortConfig.direction === "ascending"
+        ? (a.solved ? 1 : 0) - (b.solved ? 1 : 0)
+        : (b.solved ? 1 : 0) - (a.solved ? 1 : 0);
+    }
 
     const aValue = a[sortConfig.key];
     const bValue = b[sortConfig.key];
@@ -109,6 +159,22 @@ const LeetCodeCompanyProblems: React.FC = () => {
     return <Badge className={badgeClass}>{difficulty}</Badge>;
   };
 
+  // Custom checkbox with colored check
+  const CustomCheckbox = ({ checked, onChange }: { checked: boolean, onChange: () => void }) => {
+    return (
+      <div 
+        className={`w-5 h-5 rounded border cursor-pointer flex items-center justify-center ${
+          checked 
+            ? "bg-green-500 border-green-500" 
+            : "bg-white border-gray-300 dark:bg-gray-800 dark:border-gray-600"
+        }`}
+        onClick={onChange}
+      >
+        {checked && <CheckIcon className="h-4 w-4 text-white" />}
+      </div>
+    );
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -148,9 +214,24 @@ const LeetCodeCompanyProblems: React.FC = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="w-full sm:w-48">
+              <Select
+                value={solvedFilter}
+                onValueChange={setSolvedFilter}
+              >
+                <SelectTrigger className="text-white">
+                  <SelectValue placeholder="Filter by solved status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Problems</SelectItem>
+                  <SelectItem value="SOLVED">Solved</SelectItem>
+                  <SelectItem value="UNSOLVED">Unsolved</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="rounded-md border overflow-hidden ">
+          <div className="rounded-md border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -179,11 +260,17 @@ const LeetCodeCompanyProblems: React.FC = () => {
                     Acceptance {getSortDirectionIndicator("Acceptance Rate")}
                   </TableHead>
                   <TableHead className="hidden md:table-cell">Topics</TableHead>
+                  <TableHead
+                    className="w-16 cursor-pointer text-center"
+                    onClick={() => requestSort("solved" as keyof LeetCodeProblem)}
+                  >
+                    Solved {getSortDirectionIndicator("solved" as keyof LeetCodeProblem)}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedProblems.map((problem, index) => (
-                  <TableRow key={index}>
+                  <TableRow key={index} className={problem.solved ? "bg-green-50 dark:bg-green-900/10" : ""}>
                     <TableCell className="py-4">
                       {renderDifficultyBadge(problem.Difficulty)}
                     </TableCell>
@@ -212,11 +299,19 @@ const LeetCodeCompanyProblems: React.FC = () => {
                         ))}
                       </div>
                     </TableCell>
+                    <TableCell className="py-4 text-center">
+                      <div className="flex justify-center">
+                        <CustomCheckbox 
+                          checked={problem.solved || false} 
+                          onChange={() => toggleSolvedStatus(problem.Title)} 
+                        />
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {sortedProblems.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-6">
+                    <TableCell colSpan={6} className="text-center py-6">
                       No problems found matching your criteria
                     </TableCell>
                   </TableRow>
