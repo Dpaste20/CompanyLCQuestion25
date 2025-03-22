@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Table,
   TableBody,
@@ -27,11 +27,10 @@ interface LeetCodeProblem {
   Topics: string;
 }
 
-
-
 const LeetCodeCompanyProblems: React.FC = () => {
   const { company } = useParams();
-  const companyProblems = problemsData[company as keyof typeof problemsData];
+  const [companyProblems, setCompanyProblems] = useState<LeetCodeProblem[]>([]);
+  // const companyProblems = problemsData[company as keyof typeof problemsData];
   const [searchTerm, setSearchTerm] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState<string>("ALL");
   const [sortConfig, setSortConfig] = useState<{
@@ -41,7 +40,15 @@ const LeetCodeCompanyProblems: React.FC = () => {
     key: "Frequency",
     direction: "descending",
   });
-
+  useEffect(() => {
+    const fetchData = async () => {
+      const response = await fetch("/merged_questions.json");
+      const data = await response.json();
+      console.log(data[company as string]);
+      setCompanyProblems(data[company as string]);
+    };
+    fetchData();
+  }, []);
   // Filter problems based on search term and difficulty
   const filteredProblems = companyProblems.filter((problem) => {
     const matchesSearch =
@@ -105,114 +112,123 @@ const LeetCodeCompanyProblems: React.FC = () => {
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>J.P. Morgan LeetCode Problems</CardTitle>
+        <CardTitle>{company} LeetCode Problems</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex flex-col sm:flex-row gap-4 mb-4">
-          <div className="flex-1">
-            <Input
-              placeholder="Search by title or topic..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full"
-            />
+      {companyProblems.length === 0 && (
+        <CardContent>
+          <div className="text-center py-6">
+            <div className="text-gray-500">Loading problems...</div>
           </div>
-          <div className="w-full sm:w-48">
-            <Select
-              value={difficultyFilter}
-              onValueChange={setDifficultyFilter}
-            >
-              <SelectTrigger className="text-white">
-                <SelectValue placeholder="Filter by difficulty" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Difficulties</SelectItem>
-                <SelectItem value="EASY">Easy</SelectItem>
-                <SelectItem value="MEDIUM">Medium</SelectItem>
-                <SelectItem value="HARD">Hard</SelectItem>
-              </SelectContent>
-            </Select>
+        </CardContent>
+      )}
+      {companyProblems.length !== 0 && (
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <div className="flex-1">
+              <Input
+                placeholder="Search by title or topic..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="w-full sm:w-48">
+              <Select
+                value={difficultyFilter}
+                onValueChange={setDifficultyFilter}
+              >
+                <SelectTrigger className="text-white">
+                  <SelectValue placeholder="Filter by difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Difficulties</SelectItem>
+                  <SelectItem value="EASY">Easy</SelectItem>
+                  <SelectItem value="MEDIUM">Medium</SelectItem>
+                  <SelectItem value="HARD">Hard</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
 
-        <div className="rounded-md border overflow-hidden ">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead
-                  className="w-20 cursor-pointer"
-                  onClick={() => requestSort("Difficulty")}
-                >
-                  Difficulty {getSortDirectionIndicator("Difficulty")}
-                </TableHead>
-                <TableHead
-                  className="cursor-pointer"
-                  onClick={() => requestSort("Title")}
-                >
-                  Title {getSortDirectionIndicator("Title")}
-                </TableHead>
-                <TableHead
-                  className="w-24 text-right cursor-pointer"
-                  onClick={() => requestSort("Frequency")}
-                >
-                  Frequency {getSortDirectionIndicator("Frequency")}
-                </TableHead>
-                <TableHead
-                  className="w-32 text-right cursor-pointer"
-                  onClick={() => requestSort("Acceptance Rate")}
-                >
-                  Acceptance {getSortDirectionIndicator("Acceptance Rate")}
-                </TableHead>
-                <TableHead className="hidden md:table-cell">Topics</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedProblems.map((problem, index) => (
-                <TableRow key={index}>
-                  <TableCell className="py-4">
-                    {renderDifficultyBadge(problem.Difficulty)}
-                  </TableCell>
-                  <TableCell className="font-medium py-4">
-                    <a
-                      href={problem.Link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      {problem.Title}
-                    </a>
-                  </TableCell>
-                  <TableCell className="text-right py-4">
-                    {problem.Frequency.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right py-4">
-                    {(problem["Acceptance Rate"] * 100).toFixed(1)}%
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell py-4">
-                    <div className="flex flex-wrap gap-1">
-                      {problem.Topics.split(", ").map((topic, i) => (
-                        <Badge key={i} variant="outline">
-                          {topic}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {sortedProblems.length === 0 && (
+          <div className="rounded-md border overflow-hidden ">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-6">
-                    No problems found matching your criteria
-                  </TableCell>
+                  <TableHead
+                    className="w-20 cursor-pointer"
+                    onClick={() => requestSort("Difficulty")}
+                  >
+                    Difficulty {getSortDirectionIndicator("Difficulty")}
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer"
+                    onClick={() => requestSort("Title")}
+                  >
+                    Title {getSortDirectionIndicator("Title")}
+                  </TableHead>
+                  <TableHead
+                    className="w-24 text-right cursor-pointer"
+                    onClick={() => requestSort("Frequency")}
+                  >
+                    Frequency {getSortDirectionIndicator("Frequency")}
+                  </TableHead>
+                  <TableHead
+                    className="w-32 text-right cursor-pointer"
+                    onClick={() => requestSort("Acceptance Rate")}
+                  >
+                    Acceptance {getSortDirectionIndicator("Acceptance Rate")}
+                  </TableHead>
+                  <TableHead className="hidden md:table-cell">Topics</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-        <div className="mt-4 text-sm text-gray-500">
-          Showing {sortedProblems.length} of {companyProblems.length} problems
-        </div>
-      </CardContent>
+              </TableHeader>
+              <TableBody>
+                {sortedProblems.map((problem, index) => (
+                  <TableRow key={index}>
+                    <TableCell className="py-4">
+                      {renderDifficultyBadge(problem.Difficulty)}
+                    </TableCell>
+                    <TableCell className="font-medium py-4">
+                      <a
+                        href={problem.Link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {problem.Title}
+                      </a>
+                    </TableCell>
+                    <TableCell className="text-right py-4">
+                      {problem.Frequency}
+                    </TableCell>
+                    <TableCell className="text-right py-4">
+                      {(problem["Acceptance Rate"] * 100).toFixed(1)}%
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {problem.Topics.split(", ").map((topic, i) => (
+                          <Badge key={i} variant="outline">
+                            {topic}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {sortedProblems.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-6">
+                      No problems found matching your criteria
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="mt-4 text-sm text-gray-500">
+            Showing {sortedProblems.length} of {companyProblems.length} problems
+          </div>
+        </CardContent>
+      )}
     </Card>
   );
 };
