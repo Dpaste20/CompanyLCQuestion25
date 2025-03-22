@@ -17,8 +17,27 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useParams } from "react-router";
-import { CheckIcon } from "lucide-react";
+import { useParams, useNavigate } from "react-router";
+import { CheckIcon, FileTextIcon, PencilIcon, Home, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 interface LeetCodeProblem {
   Difficulty: "EASY" | "MEDIUM" | "HARD";
@@ -28,14 +47,22 @@ interface LeetCodeProblem {
   Link: string;
   Topics: string;
   solved?: boolean; 
+  notes?: string;
 }
+
+const ITEMS_PER_PAGE = 25;
 
 const LeetCodeCompanyProblems: React.FC = () => {
   const { company } = useParams();
+  const navigate = useNavigate();
   const [companyProblems, setCompanyProblems] = useState<LeetCodeProblem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState<string>("ALL");
   const [solvedFilter, setSolvedFilter] = useState<string>("ALL");
+  const [currentNote, setCurrentNote] = useState("");
+  const [currentProblemTitle, setCurrentProblemTitle] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof LeetCodeProblem | null;
     direction: "ascending" | "descending";
@@ -46,31 +73,103 @@ const LeetCodeCompanyProblems: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const response = await fetch("/merged_questions.json");
-      const data = await response.json();
-      console.log(data[company as string]);
-      
-      // Load solved status from localStorage
-      const savedSolvedStatus = localStorage.getItem(`${company}-solved-problems`);
-      let problemsWithSolvedStatus = data[company as string] || [];
-      
-      if (savedSolvedStatus) {
-        const solvedMap = JSON.parse(savedSolvedStatus);
-        problemsWithSolvedStatus = problemsWithSolvedStatus.map((problem: LeetCodeProblem) => ({
-          ...problem,
-          solved: solvedMap[problem.Title] || false
-        }));
-      } else {
-        problemsWithSolvedStatus = problemsWithSolvedStatus.map((problem: LeetCodeProblem) => ({
-          ...problem,
-          solved: false
-        }));
+      setIsLoading(true);
+      try {
+        const response = await fetch("/merged_questions.json");
+        if (!response.ok) {
+          throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log("Data loaded, available companies:", Object.keys(data));
+        
+        // Function to find the company data with case-insensitive matching
+        const findCompanyData = (data, searchCompany) => {
+          // Direct match
+          if (data[searchCompany]) {
+            return data[searchCompany];
+          }
+          
+          // Case-insensitive match
+          const companyKey = Object.keys(data).find(
+            key => key.toLowerCase() === searchCompany.toLowerCase()
+          );
+          
+          if (companyKey) {
+            return data[companyKey];
+          }
+          
+          // Special cases and formatting differences
+          const normalizedSearchName = searchCompany.toLowerCase().replace(/[^a-z0-9]/g, '');
+          
+          // Try to find partial matches
+          for (const key of Object.keys(data)) {
+            const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (normalizedKey === normalizedSearchName) {
+              return data[key];
+            }
+          }
+          
+          console.error(`Company "${searchCompany}" not found in data. Available companies:`, Object.keys(data));
+          return [];
+        };
+        
+        // Get company problems with fallback strategies
+        let companyProblems = findCompanyData(data, company as string);
+        
+        // Load saved state from localStorage
+        const savedSolvedStatus = localStorage.getItem(`${company}-solved-problems`);
+        const savedNotes = localStorage.getItem(`${company}-problem-notes`);
+        
+        // Map the problems with saved data
+        let problemsWithSavedData = Array.isArray(companyProblems) ? companyProblems : [];
+        
+        if (problemsWithSavedData.length > 0) {
+          if (savedSolvedStatus || savedNotes) {
+            const solvedMap = savedSolvedStatus ? JSON.parse(savedSolvedStatus) : {};
+            const notesMap = savedNotes ? JSON.parse(savedNotes) : {};
+            
+            problemsWithSavedData = problemsWithSavedData.map((problem: LeetCodeProblem) => ({
+              ...problem,
+              solved: solvedMap[problem.Title] || false,
+              notes: notesMap[problem.Title] || ""
+            }));
+          } else {
+            problemsWithSavedData = problemsWithSavedData.map((problem: LeetCodeProblem) => ({
+              ...problem,
+              solved: false,
+              notes: ""
+            }));
+          }
+        }
+        
+        setCompanyProblems(problemsWithSavedData);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        setIsLoading(false);
       }
-      
-      setCompanyProblems(problemsWithSolvedStatus);
     };
     fetchData();
   }, [company]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, difficultyFilter, solvedFilter]);
+
+  // Store problem data including difficulty for notes component to use
+  useEffect(() => {
+    if (companyProblems.length > 0) {
+      // Save problem data for use in the notes component
+      const problemData = companyProblems.map(problem => ({
+        Title: problem.Title,
+        Difficulty: problem.Difficulty
+      }));
+      
+      localStorage.setItem(`${company}-problem-data`, JSON.stringify(problemData));
+    }
+  }, [companyProblems, company]);
 
   // Toggle solved status for a problem
   const toggleSolvedStatus = (title: string) => {
@@ -86,6 +185,28 @@ const LeetCodeCompanyProblems: React.FC = () => {
     }, {} as Record<string, boolean>);
     
     localStorage.setItem(`${company}-solved-problems`, JSON.stringify(solvedMap));
+  };
+
+  // Update notes for a problem
+  const updateNotes = () => {
+    const updatedProblems = companyProblems.map(problem => 
+      problem.Title === currentProblemTitle ? { ...problem, notes: currentNote } : problem
+    );
+    setCompanyProblems(updatedProblems);
+    
+    // Save to localStorage
+    const notesMap = updatedProblems.reduce((acc, problem) => {
+      acc[problem.Title] = problem.notes || "";
+      return acc;
+    }, {} as Record<string, string>);
+    
+    localStorage.setItem(`${company}-problem-notes`, JSON.stringify(notesMap));
+  };
+
+  // Open notes editor
+  const openNotesEditor = (title: string, notes: string = "") => {
+    setCurrentProblemTitle(title);
+    setCurrentNote(notes);
   };
 
   // Filter problems based on search term, difficulty, and solved status
@@ -125,6 +246,12 @@ const LeetCodeCompanyProblems: React.FC = () => {
     return 0;
   });
 
+  // Pagination logic
+  const totalPages = Math.ceil(sortedProblems.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, sortedProblems.length);
+  const currentPageProblems = sortedProblems.slice(startIndex, endIndex);
+
   // Handle sorting when a column header is clicked
   const requestSort = (key: keyof LeetCodeProblem) => {
     let direction: "ascending" | "descending" = "ascending";
@@ -159,6 +286,122 @@ const LeetCodeCompanyProblems: React.FC = () => {
     return <Badge className={badgeClass}>{difficulty}</Badge>;
   };
 
+  // Generate pagination items
+  const generatePaginationItems = () => {
+    const items = [];
+    
+    // Always show first page
+    items.push(
+      <PaginationItem key="first">
+        <PaginationLink
+          onClick={() => setCurrentPage(1)}
+          isActive={currentPage === 1}
+        >
+          1
+        </PaginationLink>
+      </PaginationItem>
+    );
+    
+    // If there are more than 7 pages, we need ellipsis
+    if (totalPages > 7) {
+      // If current page is close to start
+      if (currentPage <= 4) {
+        for (let i = 2; i <= 5; i++) {
+          items.push(
+            <PaginationItem key={i}>
+              <PaginationLink
+                onClick={() => setCurrentPage(i)}
+                isActive={currentPage === i}
+              >
+                {i}
+              </PaginationLink>
+            </PaginationItem>
+          );
+        }
+        items.push(
+          <PaginationItem key="ellipsis1">
+            <PaginationEllipsis />
+          </PaginationItem>
+        );
+      } 
+      // If current page is close to end
+      else if (currentPage >= totalPages - 3) {
+        items.push(
+          <PaginationItem key="ellipsis2">
+            <PaginationEllipsis />
+          </PaginationItem>
+        );
+        for (let i = totalPages - 4; i < totalPages; i++) {
+          items.push(
+            <PaginationItem key={i}>
+              <PaginationLink
+                onClick={() => setCurrentPage(i)}
+                isActive={currentPage === i}
+              >
+                {i}
+              </PaginationLink>
+            </PaginationItem>
+          );
+        }
+      } 
+      // If current page is in the middle
+      else {
+        items.push(
+          <PaginationItem key="ellipsis3">
+            <PaginationEllipsis />
+          </PaginationItem>
+        );
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          items.push(
+            <PaginationItem key={i}>
+              <PaginationLink
+                onClick={() => setCurrentPage(i)}
+                isActive={currentPage === i}
+              >
+                {i}
+              </PaginationLink>
+            </PaginationItem>
+          );
+        }
+        items.push(
+          <PaginationItem key="ellipsis4">
+            <PaginationEllipsis />
+          </PaginationItem>
+        );
+      }
+      
+      // Always show last page if more than 1 page
+      if (totalPages > 1) {
+        items.push(
+          <PaginationItem key="last">
+            <PaginationLink
+              onClick={() => setCurrentPage(totalPages)}
+              isActive={currentPage === totalPages}
+            >
+              {totalPages}
+            </PaginationLink>
+          </PaginationItem>
+        );
+      }
+    } else {
+      // If there are 7 or fewer pages, show all
+      for (let i = 2; i <= totalPages; i++) {
+        items.push(
+          <PaginationItem key={i}>
+            <PaginationLink
+              onClick={() => setCurrentPage(i)}
+              isActive={currentPage === i}
+            >
+              {i}
+            </PaginationLink>
+          </PaginationItem>
+        );
+      }
+    }
+    
+    return items;
+  };
+
   // Custom checkbox with colored check
   const CustomCheckbox = ({ checked, onChange }: { checked: boolean, onChange: () => void }) => {
     return (
@@ -177,17 +420,44 @@ const LeetCodeCompanyProblems: React.FC = () => {
 
   return (
     <Card className="w-full">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>{company} LeetCode Problems</CardTitle>
+        <div className="flex gap-2 ">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => navigate(`/notes/${company}`)}
+            className="flex items-center gap-2 "
+          >
+            <FileTextIcon className="h-4 w-4" />
+            View Notes
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => navigate("/")}
+            className="flex items-center gap-2"
+          >
+            <Home className="h-4 w-4" />
+            Home
+          </Button>
+        </div>
       </CardHeader>
-      {companyProblems.length === 0 && (
+      {isLoading && (
         <CardContent>
           <div className="text-center py-6">
-            <div className="text-gray-500">Loading problems...</div>
+            <div className="text-gray-500">Loading problems just for you...</div>
           </div>
         </CardContent>
       )}
-      {companyProblems.length !== 0 && (
+      {!isLoading && companyProblems.length === 0 && (
+        <CardContent>
+          <div className="text-center py-6">
+            <div className="text-gray-500">No problems found for this company</div>
+          </div>
+        </CardContent>
+      )}
+      {!isLoading && companyProblems.length > 0 && (
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
             <div className="flex-1">
@@ -266,10 +536,15 @@ const LeetCodeCompanyProblems: React.FC = () => {
                   >
                     Solved {getSortDirectionIndicator("solved" as keyof LeetCodeProblem)}
                   </TableHead>
+                  <TableHead
+                    className="w-16 text-center"
+                  >
+                    Notes
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedProblems.map((problem, index) => (
+                {currentPageProblems.map((problem, index) => (
                   <TableRow key={index} className={problem.solved ? "bg-green-50 dark:bg-green-900/10" : ""}>
                     <TableCell className="py-4">
                       {renderDifficultyBadge(problem.Difficulty)}
@@ -307,11 +582,50 @@ const LeetCodeCompanyProblems: React.FC = () => {
                         />
                       </div>
                     </TableCell>
+                    <TableCell className="py-4 text-center">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="relative rounded-full h-8 w-8"
+                            onClick={() => openNotesEditor(problem.Title, problem.notes)}
+                          >
+                            {problem.notes && problem.notes.length > 0 ? (
+                              <FileTextIcon className="h-5 w-5 text-blue-500" />
+                            ) : (
+                              <PencilIcon className="h-5 w-5 text-gray-400" />
+                            )}
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle>Notes for {problem.Title}</DialogTitle>
+                          </DialogHeader>
+                          <div className="grid gap-4 py-4">
+                            <Textarea
+                              placeholder="Add your notes, hints, or solution approaches here..."
+                              value={currentNote}
+                              onChange={(e) => setCurrentNote(e.target.value)}
+                              className="min-h-[200px]"
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <DialogClose asChild>
+                              <Button variant="outline">Cancel</Button>
+                            </DialogClose>
+                            <DialogClose asChild>
+                              <Button onClick={updateNotes}>Save Notes</Button>
+                            </DialogClose>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </TableCell>
                   </TableRow>
                 ))}
-                {sortedProblems.length === 0 && (
+                {currentPageProblems.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-6">
+                    <TableCell colSpan={7} className="text-center py-6">
                       No problems found matching your criteria
                     </TableCell>
                   </TableRow>
@@ -319,8 +633,33 @@ const LeetCodeCompanyProblems: React.FC = () => {
               </TableBody>
             </Table>
           </div>
+          
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <Pagination className="mt-4">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                    isDisabled={currentPage === 1}
+                  />
+                </PaginationItem>
+                
+                {generatePaginationItems()}
+                
+                <PaginationItem>
+                  <PaginationNext 
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                    isDisabled={currentPage === totalPages}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
+          
           <div className="mt-4 text-sm text-gray-500">
-            Showing {sortedProblems.length} of {companyProblems.length} problems
+            Showing {startIndex + 1}-{endIndex} of {sortedProblems.length} problems 
+            (Page {currentPage} of {totalPages || 1})
           </div>
         </CardContent>
       )}
