@@ -314,7 +314,7 @@ const NotesTaken: React.FC = () => {
                               </Button>
                               <div className="flex gap-2">
                                 <DialogClose asChild>
-                                  <Button variant="outline">Cancel</Button>
+                                  <Button variant="outline" style={{ backgroundColor: 'rgb(27, 27, 28)', color: 'rgb(240, 243, 245)' }}>Cancel</Button>
                                 </DialogClose>
                                 <DialogClose asChild>
                                   <Button onClick={updateNote}>Save Notes</Button>
@@ -362,6 +362,7 @@ const NotesTaken: React.FC = () => {
             <Button 
               variant="outline" 
               onClick={() => setShowDeleteConfirm(false)}
+              style={{ backgroundColor: 'rgb(27, 27, 28)', color: 'rgb(240, 243, 245)' }}
             >
               Cancel
             </Button>

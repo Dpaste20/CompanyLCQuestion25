@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Confetti from 'react-confetti';
 import {
   Table,
   TableBody,
@@ -18,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useParams, useNavigate } from "react-router";
-import { CheckIcon, FileTextIcon, PencilIcon, Home, ChevronLeft, ChevronRight } from "lucide-react";
+import { CheckIcon, FileTextIcon, PencilIcon, Home } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -46,7 +47,7 @@ interface LeetCodeProblem {
   "Acceptance Rate": number;
   Link: string;
   Topics: string;
-  solved?: boolean; 
+  solved?: boolean;
   notes?: string;
 }
 
@@ -63,6 +64,7 @@ const LeetCodeCompanyProblems: React.FC = () => {
   const [currentProblemTitle, setCurrentProblemTitle] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [showConfetti, setShowConfetti] = useState(false);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof LeetCodeProblem | null;
     direction: "ascending" | "descending";
@@ -83,14 +85,11 @@ const LeetCodeCompanyProblems: React.FC = () => {
         const data = await response.json();
         console.log("Data loaded, available companies:", Object.keys(data));
         
-        // Function to find the company data with case-insensitive matching
         const findCompanyData = (data, searchCompany) => {
-          // Direct match
           if (data[searchCompany]) {
             return data[searchCompany];
           }
           
-          // Case-insensitive match
           const companyKey = Object.keys(data).find(
             key => key.toLowerCase() === searchCompany.toLowerCase()
           );
@@ -99,10 +98,8 @@ const LeetCodeCompanyProblems: React.FC = () => {
             return data[companyKey];
           }
           
-          // Special cases and formatting differences
           const normalizedSearchName = searchCompany.toLowerCase().replace(/[^a-z0-9]/g, '');
           
-          // Try to find partial matches
           for (const key of Object.keys(data)) {
             const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
             if (normalizedKey === normalizedSearchName) {
@@ -114,14 +111,11 @@ const LeetCodeCompanyProblems: React.FC = () => {
           return [];
         };
         
-        // Get company problems with fallback strategies
         let companyProblems = findCompanyData(data, company as string);
         
-        // Load saved state from localStorage
         const savedSolvedStatus = localStorage.getItem(`${company}-solved-problems`);
         const savedNotes = localStorage.getItem(`${company}-problem-notes`);
         
-        // Map the problems with saved data
         let problemsWithSavedData = Array.isArray(companyProblems) ? companyProblems : [];
         
         if (problemsWithSavedData.length > 0) {
@@ -153,32 +147,34 @@ const LeetCodeCompanyProblems: React.FC = () => {
     fetchData();
   }, [company]);
 
-  // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, difficultyFilter, solvedFilter]);
 
-  // Store problem data including difficulty for notes component to use
   useEffect(() => {
     if (companyProblems.length > 0) {
-      // Save problem data for use in the notes component
       const problemData = companyProblems.map(problem => ({
         Title: problem.Title,
         Difficulty: problem.Difficulty
       }));
-      
       localStorage.setItem(`${company}-problem-data`, JSON.stringify(problemData));
     }
   }, [companyProblems, company]);
 
-  // Toggle solved status for a problem
   const toggleSolvedStatus = (title: string) => {
-    const updatedProblems = companyProblems.map(problem => 
-      problem.Title === title ? { ...problem, solved: !problem.solved } : problem
-    );
+    const updatedProblems = companyProblems.map(problem => {
+      if (problem.Title === title) {
+        const newSolvedStatus = !problem.solved;
+        if (problem.Difficulty === "HARD" && !problem.solved && newSolvedStatus) {
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 8000);
+        }
+        return { ...problem, solved: newSolvedStatus };
+      }
+      return problem;
+    });
     setCompanyProblems(updatedProblems);
     
-    // Save to localStorage
     const solvedMap = updatedProblems.reduce((acc, problem) => {
       acc[problem.Title] = problem.solved;
       return acc;
@@ -187,14 +183,12 @@ const LeetCodeCompanyProblems: React.FC = () => {
     localStorage.setItem(`${company}-solved-problems`, JSON.stringify(solvedMap));
   };
 
-  // Update notes for a problem
   const updateNotes = () => {
     const updatedProblems = companyProblems.map(problem => 
       problem.Title === currentProblemTitle ? { ...problem, notes: currentNote } : problem
     );
     setCompanyProblems(updatedProblems);
     
-    // Save to localStorage
     const notesMap = updatedProblems.reduce((acc, problem) => {
       acc[problem.Title] = problem.notes || "";
       return acc;
@@ -203,13 +197,11 @@ const LeetCodeCompanyProblems: React.FC = () => {
     localStorage.setItem(`${company}-problem-notes`, JSON.stringify(notesMap));
   };
 
-  // Open notes editor
   const openNotesEditor = (title: string, notes: string = "") => {
     setCurrentProblemTitle(title);
     setCurrentNote(notes);
   };
 
-  // Filter problems based on search term, difficulty, and solved status
   const filteredProblems = companyProblems.filter((problem) => {
     const matchesSearch =
       problem.Title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -224,7 +216,12 @@ const LeetCodeCompanyProblems: React.FC = () => {
     return matchesSearch && matchesDifficulty && matchesSolved;
   });
 
-  // Sort the filtered problems
+  const difficultyOrder = {
+    EASY: 1,
+    MEDIUM: 2,
+    HARD: 3
+  };
+
   const sortedProblems = [...filteredProblems].sort((a, b) => {
     if (!sortConfig.key) return 0;
 
@@ -232,6 +229,14 @@ const LeetCodeCompanyProblems: React.FC = () => {
       return sortConfig.direction === "ascending"
         ? (a.solved ? 1 : 0) - (b.solved ? 1 : 0)
         : (b.solved ? 1 : 0) - (a.solved ? 1 : 0);
+    }
+
+    if (sortConfig.key === "Difficulty") {
+      const aValue = difficultyOrder[a.Difficulty];
+      const bValue = difficultyOrder[b.Difficulty];
+      return sortConfig.direction === "ascending"
+        ? aValue - bValue
+        : bValue - aValue;
     }
 
     const aValue = a[sortConfig.key];
@@ -246,13 +251,11 @@ const LeetCodeCompanyProblems: React.FC = () => {
     return 0;
   });
 
-  // Pagination logic
   const totalPages = Math.ceil(sortedProblems.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, sortedProblems.length);
   const currentPageProblems = sortedProblems.slice(startIndex, endIndex);
 
-  // Handle sorting when a column header is clicked
   const requestSort = (key: keyof LeetCodeProblem) => {
     let direction: "ascending" | "descending" = "ascending";
     if (sortConfig.key === key && sortConfig.direction === "ascending") {
@@ -261,16 +264,13 @@ const LeetCodeCompanyProblems: React.FC = () => {
     setSortConfig({ key, direction });
   };
 
-  // Get the sort direction indicator
   const getSortDirectionIndicator = (key: keyof LeetCodeProblem) => {
     if (sortConfig.key !== key) return null;
     return sortConfig.direction === "ascending" ? "↑" : "↓";
   };
 
-  // Render difficulty badge with appropriate color
   const renderDifficultyBadge = (difficulty: string) => {
     let badgeClass = "";
-
     switch (difficulty) {
       case "EASY":
         badgeClass = "bg-green-500 hover:bg-green-600";
@@ -282,15 +282,11 @@ const LeetCodeCompanyProblems: React.FC = () => {
         badgeClass = "bg-red-500 hover:bg-red-600";
         break;
     }
-
     return <Badge className={badgeClass}>{difficulty}</Badge>;
   };
 
-  // Generate pagination items
   const generatePaginationItems = () => {
     const items = [];
-    
-    // Always show first page
     items.push(
       <PaginationItem key="first">
         <PaginationLink
@@ -302,9 +298,7 @@ const LeetCodeCompanyProblems: React.FC = () => {
       </PaginationItem>
     );
     
-    // If there are more than 7 pages, we need ellipsis
     if (totalPages > 7) {
-      // If current page is close to start
       if (currentPage <= 4) {
         for (let i = 2; i <= 5; i++) {
           items.push(
@@ -324,7 +318,6 @@ const LeetCodeCompanyProblems: React.FC = () => {
           </PaginationItem>
         );
       } 
-      // If current page is close to end
       else if (currentPage >= totalPages - 3) {
         items.push(
           <PaginationItem key="ellipsis2">
@@ -344,7 +337,6 @@ const LeetCodeCompanyProblems: React.FC = () => {
           );
         }
       } 
-      // If current page is in the middle
       else {
         items.push(
           <PaginationItem key="ellipsis3">
@@ -370,7 +362,6 @@ const LeetCodeCompanyProblems: React.FC = () => {
         );
       }
       
-      // Always show last page if more than 1 page
       if (totalPages > 1) {
         items.push(
           <PaginationItem key="last">
@@ -384,7 +375,6 @@ const LeetCodeCompanyProblems: React.FC = () => {
         );
       }
     } else {
-      // If there are 7 or fewer pages, show all
       for (let i = 2; i <= totalPages; i++) {
         items.push(
           <PaginationItem key={i}>
@@ -402,7 +392,6 @@ const LeetCodeCompanyProblems: React.FC = () => {
     return items;
   };
 
-  // Custom checkbox with colored check
   const CustomCheckbox = ({ checked, onChange }: { checked: boolean, onChange: () => void }) => {
     return (
       <div 
@@ -419,251 +408,265 @@ const LeetCodeCompanyProblems: React.FC = () => {
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>{company} LeetCode Problems</CardTitle>
-        <div className="flex gap-2 ">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => navigate(`/notes/${company}`)}
-            className="flex items-center gap-2 "
-          >
-            <FileTextIcon className="h-4 w-4" />
-            View Notes
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => navigate("/")}
-            className="flex items-center gap-2"
-          >
-            <Home className="h-4 w-4" />
-            Home
-          </Button>
-        </div>
-      </CardHeader>
-      {isLoading && (
-        <CardContent>
-          <div className="text-center py-6">
-            <div className="text-gray-500">Loading problems just for you...</div>
-          </div>
-        </CardContent>
+    <div className="relative">
+      {showConfetti && (
+        <Confetti
+          width={window.innerWidth}
+          height={window.innerHeight}
+          numberOfPieces={1000}
+          gravity={0.3}
+          recycle={false}
+        />
       )}
-      {!isLoading && companyProblems.length === 0 && (
-        <CardContent>
-          <div className="text-center py-6">
-            <div className="text-gray-500">No problems found for this company</div>
+      <Card className="w-full">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>{company} LeetCode Problems</CardTitle>
+          <div className="flex gap-2 ">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate(`/notes/${company}`)}
+              style={{ backgroundColor: 'rgb(27, 27, 28)', color: 'rgb(240, 243, 245)' }}
+              className="flex items-center gap-2 "
+            >
+              <FileTextIcon className="h-4 w-4" />
+              View Notes
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => navigate("/")}
+              style={{ backgroundColor: 'rgb(27, 27, 28)', color: 'rgb(240, 243, 245)' }}
+              className="flex items-center gap-2"
+            >
+              <Home className="h-4 w-4" />
+              Home
+            </Button>
           </div>
-        </CardContent>
-      )}
-      {!isLoading && companyProblems.length > 0 && (
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4 mb-4">
-            <div className="flex-1">
-              <Input
-                placeholder="Search by title or topic..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full"
-              />
+        </CardHeader>
+        {isLoading && (
+          <CardContent>
+            <div className="text-center py-6">
+              <div className="text-gray-500">Loading problems just for you...</div>
             </div>
-            <div className="w-full sm:w-48">
-              <Select
-                value={difficultyFilter}
-                onValueChange={setDifficultyFilter}
-              >
-                <SelectTrigger className="text-white">
-                  <SelectValue placeholder="Filter by difficulty" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Difficulties</SelectItem>
-                  <SelectItem value="EASY">Easy</SelectItem>
-                  <SelectItem value="MEDIUM">Medium</SelectItem>
-                  <SelectItem value="HARD">Hard</SelectItem>
-                </SelectContent>
-              </Select>
+          </CardContent>
+        )}
+        {!isLoading && companyProblems.length === 0 && (
+          <CardContent>
+            <div className="text-center py-6">
+              <div className="text-gray-500">No problems found for this company</div>
             </div>
-            <div className="w-full sm:w-48">
-              <Select
-                value={solvedFilter}
-                onValueChange={setSolvedFilter}
-              >
-                <SelectTrigger className="text-white">
-                  <SelectValue placeholder="Filter by solved status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Problems</SelectItem>
-                  <SelectItem value="SOLVED">Solved</SelectItem>
-                  <SelectItem value="UNSOLVED">Unsolved</SelectItem>
-                </SelectContent>
-              </Select>
+          </CardContent>
+        )}
+        {!isLoading && companyProblems.length > 0 && (
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <div className="flex-1">
+                <Input
+                  placeholder="Search by title or topic..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <Select
+                  value={difficultyFilter}
+                  onValueChange={setDifficultyFilter}
+                >
+                  <SelectTrigger className="text-white">
+                    <SelectValue placeholder="Filter by difficulty" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Difficulties</SelectItem>
+                    <SelectItem value="EASY">Easy</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HARD">Hard</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full sm:w-48">
+                <Select
+                  value={solvedFilter}
+                  onValueChange={setSolvedFilter}
+                >
+                  <SelectTrigger className="text-white">
+                    <SelectValue placeholder="Filter by solved status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Problems</SelectItem>
+                    <SelectItem value="SOLVED">Solved</SelectItem>
+                    <SelectItem value="UNSOLVED">Unsolved</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
 
-          <div className="rounded-md border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead
-                    className="w-20 cursor-pointer"
-                    onClick={() => requestSort("Difficulty")}
-                  >
-                    Difficulty {getSortDirectionIndicator("Difficulty")}
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer"
-                    onClick={() => requestSort("Title")}
-                  >
-                    Title {getSortDirectionIndicator("Title")}
-                  </TableHead>
-                  <TableHead
-                    className="w-24 text-right cursor-pointer"
-                    onClick={() => requestSort("Frequency")}
-                  >
-                    Frequency {getSortDirectionIndicator("Frequency")}
-                  </TableHead>
-                  <TableHead
-                    className="w-32 text-right cursor-pointer"
-                    onClick={() => requestSort("Acceptance Rate")}
-                  >
-                    Acceptance {getSortDirectionIndicator("Acceptance Rate")}
-                  </TableHead>
-                  <TableHead className="hidden md:table-cell">Topics</TableHead>
-                  <TableHead
-                    className="w-16 cursor-pointer text-center"
-                    onClick={() => requestSort("solved" as keyof LeetCodeProblem)}
-                  >
-                    Solved {getSortDirectionIndicator("solved" as keyof LeetCodeProblem)}
-                  </TableHead>
-                  <TableHead
-                    className="w-16 text-center"
-                  >
-                    Notes
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentPageProblems.map((problem, index) => (
-                  <TableRow key={index} className={problem.solved ? "bg-green-50 dark:bg-green-900/10" : ""}>
-                    <TableCell className="py-4">
-                      {renderDifficultyBadge(problem.Difficulty)}
-                    </TableCell>
-                    <TableCell className="font-medium py-4">
-                      <a
-                        href={problem.Link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        {problem.Title}
-                      </a>
-                    </TableCell>
-                    <TableCell className="text-right py-4">
-                      {problem.Frequency}
-                    </TableCell>
-                    <TableCell className="text-right py-4">
-                      {(problem["Acceptance Rate"] * 100).toFixed(1)}%
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell py-4">
-                      <div className="flex flex-wrap gap-1">
-                        {problem.Topics.split(", ").map((topic, i) => (
-                          <Badge key={i} variant="outline">
-                            {topic}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-4 text-center">
-                      <div className="flex justify-center">
-                        <CustomCheckbox 
-                          checked={problem.solved || false} 
-                          onChange={() => toggleSolvedStatus(problem.Title)} 
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-4 text-center">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            className="relative rounded-full h-8 w-8"
-                            onClick={() => openNotesEditor(problem.Title, problem.notes)}
-                          >
-                            {problem.notes && problem.notes.length > 0 ? (
-                              <FileTextIcon className="h-5 w-5 text-blue-500" />
-                            ) : (
-                              <PencilIcon className="h-5 w-5 text-gray-400" />
-                            )}
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-lg">
-                          <DialogHeader>
-                            <DialogTitle>Notes for {problem.Title}</DialogTitle>
-                          </DialogHeader>
-                          <div className="grid gap-4 py-4">
-                            <Textarea
-                              placeholder="Add your notes, hints, or solution approaches here..."
-                              value={currentNote}
-                              onChange={(e) => setCurrentNote(e.target.value)}
-                              className="min-h-[200px]"
-                            />
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <DialogClose asChild>
-                              <Button variant="outline">Cancel</Button>
-                            </DialogClose>
-                            <DialogClose asChild>
-                              <Button onClick={updateNotes}>Save Notes</Button>
-                            </DialogClose>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {currentPageProblems.length === 0 && (
+            <div className="rounded-md border overflow-hidden">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-6">
-                      No problems found matching your criteria
-                    </TableCell>
+                    <TableHead
+                      className="w-20 cursor-pointer"
+                      onClick={() => requestSort("Difficulty")}
+                    >
+                      Difficulty {getSortDirectionIndicator("Difficulty")}
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer"
+                      onClick={() => requestSort("Title")}
+                    >
+                      Title {getSortDirectionIndicator("Title")}
+                    </TableHead>
+                    <TableHead
+                      className="w-24 text-right cursor-pointer"
+                      onClick={() => requestSort("Frequency")}
+                    >
+                      Frequency {getSortDirectionIndicator("Frequency")}
+                    </TableHead>
+                    <TableHead
+                      className="w-32 text-right cursor-pointer"
+                      onClick={() => requestSort("Acceptance Rate")}
+                    >
+                      Acceptance {getSortDirectionIndicator("Acceptance Rate")}
+                    </TableHead>
+                    <TableHead className="hidden md:table-cell">Topics</TableHead>
+                    <TableHead
+                      className="w-16 cursor-pointer text-center"
+                      onClick={() => requestSort("solved" as keyof LeetCodeProblem)}
+                    >
+                      Solved {getSortDirectionIndicator("solved" as keyof LeetCodeProblem)}
+                    </TableHead>
+                    <TableHead
+                      className="w-16 text-center"
+                    >
+                      Notes
+                    </TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          
-          {/* Pagination controls */}
-          {totalPages > 1 && (
-            <Pagination className="mt-4">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious 
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
-                    isDisabled={currentPage === 1}
-                  />
-                </PaginationItem>
-                
-                {generatePaginationItems()}
-                
-                <PaginationItem>
-                  <PaginationNext 
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
-                    isDisabled={currentPage === totalPages}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
-          
-          <div className="mt-4 text-sm text-gray-500">
-            Showing {startIndex + 1}-{endIndex} of {sortedProblems.length} problems 
-            (Page {currentPage} of {totalPages || 1})
-          </div>
-        </CardContent>
-      )}
-    </Card>
+                </TableHeader>
+                <TableBody>
+                  {currentPageProblems.map((problem, index) => (
+                    <TableRow key={index} className={problem.solved ? "bg-green-50 dark:bg-green-900/10" : ""}>
+                      <TableCell className="py-4">
+                        {renderDifficultyBadge(problem.Difficulty)}
+                      </TableCell>
+                      <TableCell className="font-medium py-4">
+                        <a
+                          href={problem.Link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {problem.Title}
+                        </a>
+                      </TableCell>
+                      <TableCell className="text-right py-4">
+                        {problem.Frequency}
+                      </TableCell>
+                      <TableCell className="text-right py-4">
+                        {(problem["Acceptance Rate"] * 100).toFixed(1)}%
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {problem.Topics.split(", ").map((topic, i) => (
+                            <Badge key={i} variant="outline">
+                              {topic}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4 text-center">
+                        <div className="flex justify-center">
+                          <CustomCheckbox 
+                            checked={problem.solved || false} 
+                            onChange={() => toggleSolvedStatus(problem.Title)} 
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4 text-center">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="relative rounded-full h-8 w-8"
+                              onClick={() => openNotesEditor(problem.Title, problem.notes)}
+                            >
+                              {problem.notes && problem.notes.length > 0 ? (
+                                <FileTextIcon className="h-5 w-5 text-blue-500" />
+                              ) : (
+                                <PencilIcon className="h-5 w-5 text-gray-400" />
+                              )}
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-lg">
+                            <DialogHeader>
+                              <DialogTitle>Notes for {problem.Title}</DialogTitle>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                              <Textarea
+                                placeholder="Add your notes, hints, or solution approaches here..."
+                                value={currentNote}
+                                onChange={(e) => setCurrentNote(e.target.value)}
+                                className="min-h-[200px]"
+                              />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <DialogClose asChild>
+                                <Button variant="outline"
+                                 style={{ backgroundColor: 'rgb(27, 27, 28)', color: 'rgb(240, 243, 245)' }}
+                                 >Cancel</Button>
+                              </DialogClose>
+                              <DialogClose asChild>
+                                <Button onClick={updateNotes}>Save Notes</Button>
+                              </DialogClose>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {currentPageProblems.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-6">
+                        No problems found matching your criteria
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            
+            {totalPages > 1 && (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious 
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                      isDisabled={currentPage === 1}
+                    />
+                  </PaginationItem>
+                  
+                  {generatePaginationItems()}
+                  
+                  <PaginationItem>
+                    <PaginationNext 
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                      isDisabled={currentPage === totalPages}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
+            
+            <div className="mt-4 text-sm text-gray-500">
+              Showing {startIndex + 1}-{endIndex} of {sortedProblems.length} problems 
+              (Page {currentPage} of {totalPages || 1})
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    </div>
   );
 };
 
