@@ -85,7 +85,11 @@ const LeetCodeCompanyProblems: React.FC = () => {
         const data = await response.json();
         console.log("Data loaded, available companies:", Object.keys(data));
         
-        const findCompanyData = (data, searchCompany) => {
+        interface CompanyData {
+          [key: string]: LeetCodeProblem[];
+        }
+
+        const findCompanyData = (data: CompanyData, searchCompany: string): LeetCodeProblem[] => {
           if (data[searchCompany]) {
             return data[searchCompany];
           }
@@ -176,7 +180,7 @@ const LeetCodeCompanyProblems: React.FC = () => {
     setCompanyProblems(updatedProblems);
     
     const solvedMap = updatedProblems.reduce((acc, problem) => {
-      acc[problem.Title] = problem.solved;
+      acc[problem.Title] = problem.solved ?? false;
       return acc;
     }, {} as Record<string, boolean>);
     
@@ -242,10 +246,10 @@ const LeetCodeCompanyProblems: React.FC = () => {
     const aValue = a[sortConfig.key];
     const bValue = b[sortConfig.key];
 
-    if (aValue < bValue) {
+    if ((aValue ?? 0) < (bValue ?? 0)) {
       return sortConfig.direction === "ascending" ? -1 : 1;
     }
-    if (aValue > bValue) {
+    if ((aValue ?? 0) > (bValue ?? 0)) {
       return sortConfig.direction === "ascending" ? 1 : -1;
     }
     return 0;
@@ -642,8 +646,12 @@ const LeetCodeCompanyProblems: React.FC = () => {
                 <PaginationContent>
                   <PaginationItem>
                     <PaginationPrevious 
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
-                      isDisabled={currentPage === 1}
+                      onClick={() => {
+                        if (currentPage > 1) {
+                          setCurrentPage(prev => Math.max(prev - 1, 1));
+                        }
+                      }} 
+                      className={currentPage === 1 ? "opacity-50 pointer-events-none" : ""}
                     />
                   </PaginationItem>
                   
@@ -651,8 +659,12 @@ const LeetCodeCompanyProblems: React.FC = () => {
                   
                   <PaginationItem>
                     <PaginationNext 
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
-                      isDisabled={currentPage === totalPages}
+                      onClick={() => {
+                        if (currentPage < totalPages) {
+                          setCurrentPage(prev => Math.min(prev + 1, totalPages));
+                        }
+                      }}
+                      className={currentPage === totalPages ? "opacity-50 pointer-events-none" : ""}
                     />
                   </PaginationItem>
                 </PaginationContent>

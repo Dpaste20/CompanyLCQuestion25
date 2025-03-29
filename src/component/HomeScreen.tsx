@@ -263,7 +263,7 @@ export default function HomeScreen() {
   const navigate = useNavigate();
 
   const handleCompanyClick = (company: string) => {
-    if (company === "J.P.Morgan") {
+    if (company === "J.P.Morgan" ) {
       setShowHeart(true);
       setTimeout(() => {
         setShowHeart(false);
