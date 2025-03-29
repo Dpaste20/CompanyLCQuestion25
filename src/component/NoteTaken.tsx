@@ -51,7 +51,7 @@ const NotesTaken: React.FC = () => {
           const notesMap = JSON.parse(notesData);
           
           // Get problem difficulty information
-          const solvedData = localStorage.getItem(`${companyName}-solved-problems`);
+          // Removed unused variable 'solvedData'
           const problemData = localStorage.getItem(`${companyName}-problem-data`);
           let difficultyMap: Record<string, string> = {};
           
@@ -285,6 +285,7 @@ const NotesTaken: React.FC = () => {
                             <Button 
                               variant="ghost" 
                               size="icon"
+                              
                               className="rounded-full h-8 w-8"
                               onClick={() => openNoteEditor(problem)}
                             >
@@ -307,6 +308,7 @@ const NotesTaken: React.FC = () => {
                               <Button 
                                 variant="destructive" 
                                 size="sm"
+                                
                                 onClick={() => setShowDeleteConfirm(true)}
                               >
                                 <Trash2Icon className="h-4 w-4 mr-1" />
@@ -327,6 +329,7 @@ const NotesTaken: React.FC = () => {
                         <Button 
                           variant="ghost" 
                           size="icon"
+                       
                           className="rounded-full h-8 w-8"
                           onClick={() => {
                             openNoteEditor(problem);
@@ -368,6 +371,7 @@ const NotesTaken: React.FC = () => {
             </Button>
             <Button 
               variant="destructive" 
+              style={{backgroundColor:"red"}}
               onClick={deleteNote}
             >
               Delete
